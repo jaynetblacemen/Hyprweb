@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hyprweb Bootloader</title>
+    <style>
+        body {
+            background-color: #000;
+            color: #0F0;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .boot-screen {
+            white-space: pre-wrap;
+            text-align: left;
+            width: 80%;
+            max-width: 800px;
+        }
+        .options {
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+        .options span {
+            cursor: pointer;
+            padding: 5px 10px;
+            border: 1px solid transparent;
+        }
+        .options span.selected {
+            border: 1px solid #0F0;
+        }
+        .countdown {
+            margin-top: 10px;
+            font-size: 0.9em;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="boot-screen" id="bootScreen">
+        <p>Heron bootloader</p>
+        <p>select an option.</p>
+        <div class="options">
+            <span id="linuxOption" class="selected">web Linux 0.1</span> | <span id="uefiOption">UEFI</span>
+        </div>
+        <p class="countdown" id="countdown">Booting to Linux in <span id="timer">5</span> seconds...</p>
+    </div>
+
+    <script>
+        const bootScreen = document.getElementById('bootScreen');
+        const linuxOption = document.getElementById('linuxOption');
+        const uefiOption = document.getElementById('uefiOption');
+        const countdownElement = document.getElementById('countdown');
+        const timerElement = document.getElementById('timer');
+
+        let selectedOption = 'linux';
+        let countdown = 5;
+        let countdownInterval;
+
+        function updateSelection() {
+            linuxOption.classList.remove('selected');
+            uefiOption.classList.remove('selected');
+            if (selectedOption === 'linux') {
+                linuxOption.classList.add('selected');
+                countdownElement.classList.remove('hidden');
+            } else {
+                uefiOption.classList.add('selected');
+                countdownElement.classList.add('hidden');
+            }
+        }
+
+        function startCountdown() {
+            countdownInterval = setInterval(() => {
+                countdown--;
+                timerElement.textContent = countdown;
+                if (countdown <= 0) {
+                    clearInterval(countdownInterval);
+                    bootLinux();
+                }
+            }, 1000);
+        }
+
+        function bootLinux() {
+            clearInterval(countdownInterval);
+            bootScreen.innerHTML = `
+                <p>Booting Linux...</p>
+                <p>Loading kernel...</p>
+                <p>Detecting hardware...</p>
+                <p>Initializing devices...</p>
+                <p>Starting systemd...</p>
+                <p>Welcome to Hyprweb OS!</p>
+            `;
+            setTimeout(() => {
+                window.location.href = '/userspace/login.html';
+            }, 2000); // Simulate boot time
+        }
+
+        function bootUEFI() {
+            clearInterval(countdownInterval);
+            bootScreen.innerHTML = `<p>Entering UEFI setup...</p>`;
+            setTimeout(() => {
+                window.location.href = '/.idea/Kernel/UEFI.html';
+            }, 1000);
+        }
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                if (selectedOption === 'linux') {
+                    bootLinux();
+                } else if (selectedOption === 'uefi') {
+                    bootUEFI();
+                }
+            } else if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                selectedOption = selectedOption === 'linux' ? 'uefi' : 'linux';
+                updateSelection();
+                // Reset countdown if switched back to linux
+                if (selectedOption === 'linux') {
+                    clearInterval(countdownInterval);
+                    countdown = 5;
+                    timerElement.textContent = countdown;
+                    startCountdown();
+                } else {
+                    clearInterval(countdownInterval);
+                }
+            }
+        });
+
+        linuxOption.addEventListener('click', () => {
+            selectedOption = 'linux';
+            updateSelection();
+            clearInterval(countdownInterval);
+            countdown = 5;
+            timerElement.textContent = countdown;
+            startCountdown();
+        });
+
+        uefiOption.addEventListener('click', () => {
+            selectedOption = 'uefi';
+            updateSelection();
+            clearInterval(countdownInterval);
+        });
+
+        updateSelection(); // Initial selection display
+        startCountdown(); // Start countdown on load
+    </script>
+</body>
+</html>

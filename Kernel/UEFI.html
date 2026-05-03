@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UEFI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Courier New", monospace;
+            user-select: none;
+        }
+
+        body {
+            background: #000;
+            color: #b7d7ff;
+            overflow: hidden;
+        }
+
+        .crt {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background: repeating-linear-gradient(
+                    to bottom,
+                    rgba(255,255,255,0.02),
+                    rgba(255,255,255,0.02) 1px,
+                    transparent 1px,
+                    transparent 3px
+            );
+            animation: flicker 0.15s infinite;
+        }
+
+        @keyframes flicker {
+            0% { opacity: 0.97; }
+            50% { opacity: 1; }
+            100% { opacity: 0.96; }
+        }
+
+        .bios {
+            width: 100vw;
+            height: 100vh;
+            background: #001b7a;
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-bar {
+            text-align: center;
+            color: #fff;
+            font-weight: bold;
+            margin-bottom: 12px;
+            border-bottom: 2px solid #9ec7ff;
+            padding-bottom: 6px;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 10px;
+            flex-wrap: wrap;
+        }
+
+        .tab {
+            padding: 4px 10px;
+            border: 1px solid #9ec7ff;
+            cursor: pointer;
+        }
+
+        .tab.active {
+            background: #9ec7ff;
+            color: #001b7a;
+            font-weight: bold;
+        }
+
+        .content {
+            flex: 1;
+            border: 1px solid #9ec7ff;
+            padding: 10px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .setting {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 8px;
+            margin-bottom: 2px;
+        }
+
+        .setting.selected {
+            background: #9ec7ff;
+            color: #001b7a;
+        }
+
+        .footer {
+            margin-top: 10px;
+            display: flex;
+            justify-content: space-between;
+            color: #fff;
+            font-size: 14px;
+            border-top: 2px solid #9ec7ff;
+            padding-top: 6px;
+        }
+
+        .popup {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 400px;
+            background: #000;
+            border: 2px solid #9ec7ff;
+            padding: 18px;
+            color: #fff;
+            display: none;
+            z-index: 999;
+        }
+
+        .popup h2 {
+            margin-bottom: 10px;
+            color: #9ec7ff;
+        }
+
+        .popup button {
+            margin-top: 16px;
+            background: #9ec7ff;
+            border: none;
+            color: #001b7a;
+            padding: 6px 12px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .boot-screen {
+            position: fixed;
+            inset: 0;
+            background: #000;
+            color: #00ff00;
+            padding: 20px;
+            font-size: 18px;
+            display: none;
+            z-index: 10000;
+            white-space: pre-line;
+        }
+
+        .hint {
+            color: #a5c6ff;
+        }
+
+        .status-good {
+            color: #00ff88;
+        }
+
+        .status-bad {
+            color: #ff6666;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #9ec7ff;
+        }
+    </style>
+</head>
+<body>
+<div class="boot-screen" id="bootScreen"></div>
+
+<div class="bios">
+    <div class="top-bar">
+        Web UEFI
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+
+    <div class="content" id="content"></div>
+
+    <div class="footer">
+        <span>↑ ↓ Select Item &nbsp; Enter Change Value</span>
+        <span>F10 Save & Exit | ESC Cancel</span>
+    </div>
+</div>
+
+<div class="popup" id="popup">
+    <h2 id="popupTitle">BIOS</h2>
+    <p id="popupText"></p>
+    <button onclick="closePopup()">OK</button>
+</div>
+
+<div class="crt"></div>
+
+<script>
+    const biosData = {
+        Main: [
+            ["System Time", "12:47:11"],
+            ["System Date", "03/05/2026"],
+            ["CPU", "Intel(R) Core(TM) i9-14900KS"],
+            ["Memory", "32768 MB"],
+            ["BIOS Version", "JB-RETRO-1.0"],
+            ["SATA Mode", "AHCI"],
+            ["Fast Boot", "Enabled"]
+        ],
+
+        Advanced: [
+            ["Virtualization", "Enabled"],
+            ["CPU Hyperthreading", "Enabled"],
+            ["Integrated Graphics", "Auto"],
+            ["USB Legacy Support", "Enabled"],
+            ["Overclock Profile", "Extreme"],
+            ["Fan Curve", "Turbo"],
+            ["AI Tweaker", "Enabled"]
+        ],
+
+        Security: [
+            ["Admin Password", "Not Set"],
+            ["Secure Boot", "Enabled"],
+            ["TPM Device", "Detected"],
+            ["Kernel Lock", "Disabled"],
+            ["Drive Encryption", "Enabled"]
+        ],
+
+        Boot: [
+            ["Boot Option #1", "NVMe SSD"],
+            ["Boot Option #2", "USB Device"],
+            ["Network Boot", "Disabled"],
+            ["Boot Logo", "Enabled"],
+            ["Launch CSM", "Disabled"]
+        ],
+
+        Power: [
+            ["AC Recovery", "Power Off"],
+            ["RGB Lighting", "Enabled"],
+            ["Sleep Mode", "Modern Standby"],
+            ["Wake On LAN", "Disabled"],
+            ["CPU Power Limit", "Unlimited"]
+        ],
+
+        Exit: [
+            ["Save Changes and Exit", "Enter"],
+            ["Discard Changes", "Enter"],
+            ["Load Optimized Defaults", "Enter"],
+            ["Launch Fake Boot", "Enter"]
+        ]
+    };
+
+    const tabsEl = document.getElementById("tabs");
+    const contentEl = document.getElementById("content");
+
+    const tabNames = Object.keys(biosData);
+
+    let currentTab = 0;
+    let currentSetting = 0;
+
+    function renderTabs() {
+        tabsEl.innerHTML = "";
+
+        tabNames.forEach((tab, index) => {
+            const div = document.createElement("div");
+            div.className = "tab" + (index === currentTab ? " active" : "");
+            div.textContent = tab;
+
+            div.onclick = () => {
+                currentTab = index;
+                currentSetting = 0;
+                render();
+            };
+
+            tabsEl.appendChild(div);
+        });
+    }
+
+    function renderContent() {
+        contentEl.innerHTML = "";
+
+        const current = biosData[tabNames[currentTab]];
+
+        current.forEach((item, index) => {
+            const row = document.createElement("div");
+            row.className = "setting" + (index === currentSetting ? " selected" : "");
+
+            const left = document.createElement("span");
+            left.textContent = item[0];
+
+            const right = document.createElement("span");
+            right.textContent = item[1];
+
+            row.appendChild(left);
+            row.appendChild(right);
+
+            contentEl.appendChild(row);
+        });
+
+        const hint = document.createElement("div");
+        hint.className = "hint";
+        hint.style.marginTop = "20px";
+        hint.innerHTML = `
+        <br>
+        PROJECT: HYPRWEB UEFI<br>
+
+      `;
+
+        contentEl.appendChild(hint);
+    }
+
+    function render() {
+        renderTabs();
+        renderContent();
+    }
+
+    function popup(title, text) {
+        document.getElementById("popupTitle").innerText = title;
+        document.getElementById("popupText").innerText = text;
+        document.getElementById("popup").style.display = "block";
+    }
+
+    function closePopup() {
+        document.getElementById("popup").style.display = "none";
+    }
+
+    function fakeBoot() {
+        const screen = document.getElementById("bootScreen");
+        screen.style.display = "block";
+
+        const lines = [
+            "Initializing BIOS...",
+            "Checking memory... OK",
+            "Detecting NVMe SSD... OK",
+            "Starting CPU Fan... OK",
+            "Loading RetroOS v0.1...",
+            "Kernel Loaded Successfully",
+            "Launching Fake Desktop...",
+            "ERROR: User too cool 😎",
+            "Boot Complete"
+        ];
+
+        screen.innerHTML = "";
+
+        let i = 0;
+
+        const interval = setInterval(() => {
+            if (i < lines.length) {
+                screen.innerHTML += lines[i] + "\n";
+                i++;
+            } else {
+                clearInterval(interval);
+
+                setTimeout(() => {
+                    screen.style.display = "none";
+                }, 1800);
+            }
+        }, 500);
+    }
+
+    document.addEventListener("keydown", (e) => {
+        const current = biosData[tabNames[currentTab]];
+
+        if (e.key === "ArrowDown") {
+            currentSetting = (currentSetting + 1) % current.length;
+            render();
+        }
+
+        if (e.key === "ArrowUp") {
+            currentSetting = (currentSetting - 1 + current.length) % current.length;
+            render();
+        }
+
+        if (e.key === "ArrowRight") {
+            currentTab = (currentTab + 1) % tabNames.length;
+            currentSetting = 0;
+            render();
+        }
+
+        if (e.key === "ArrowLeft") {
+            currentTab = (currentTab - 1 + tabNames.length) % tabNames.length;
+            currentSetting = 0;
+            render();
+        }
+
+        if (e.key === "Enter") {
+            const selected = current[currentSetting][0];
+
+            if (selected === "Save Changes and Exit") {
+                popup("Saving", "Changes saved successfully.");
+            }
+
+            else if (selected === "Discard Changes") {
+                popup("Discarded","Changes discarded.");
+            }
+
+            else if (selected === "Load Optimized Defaults") {
+                popup("Defaults Loaded ","Defaults loaded successfully.");
+            }
+
+            else if (selected === "Launch Boot") {
+                fakeBoot();
+            }
+
+            else {
+                toggleValue(current[currentSetting]);
+                render();
+            }
+        }
+
+        if (e.key === "F10") {
+            e.preventDefault();
+            popup("Save & Exit");
+        }
+
+        if (e.key === "Escape") {
+            closePopup();
+        }
+    });
+
+    function toggleValue(item) {
+        const toggles = {
+            Enabled: "Disabled",
+            Disabled: "Enabled",
+            Auto: "Manual",
+            Manual: "Auto",
+            AHCI: "RAID",
+            RAID: "AHCI",
+            Turbo: "Silent",
+            Silent: "Turbo",
+            Extreme: "Balanced",
+            Balanced: "Extreme",
+            "Power Off": "Last State",
+            "Last State": "Power Off"
+        };
+
+        if (toggles[item[1]]) {
+            item[1] = toggles[item[1]];
+        }
+    }
+
+    render();
+</script>
+</body>
+</html>
